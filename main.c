@@ -46,12 +46,13 @@ int main()
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 1920;
-    const int screenHeight = 1080;
+    const int screenWidth = 2560;
+    const int screenHeight = 1440;
 
     const float playerHeight = 4.0f;
 
     InitWindow(screenWidth, screenHeight, "bad game made by a bad gamer");
+    ToggleFullscreen();
 
     Shader shader = LoadShader(0, "shaders/first.fs");
     Shader shaderblur = LoadShader(0, "shaders/blur.fs");
@@ -70,12 +71,15 @@ int main()
 
     int cameraMode = CAMERA_FIRST_PERSON;
 
-    char filename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmapfull.png";
+    char filename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap1024.png";
     Image heightMapImage = LoadImage(filename);
     Texture2D heightMapTexture = LoadTextureFromImage(heightMapImage);
     Mesh heightMapMesh = GenMeshHeightmap(heightMapImage, (Vector3){MAP_SIZE, MAP_SIZE/8, MAP_SIZE});
     Model heightMap = LoadModelFromMesh(heightMapMesh);
-    heightMap.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexture;
+    char texfilename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmaptexture4096.png";
+    Image heightMapTexImage = LoadImage(texfilename);
+    Texture2D heightMapTexTexture = LoadTextureFromImage(heightMapTexImage);
+    heightMap.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexTexture;
 
     char filenameLow[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap256.png";
     Image heightMapImageLow = LoadImage(filenameLow);
@@ -100,7 +104,7 @@ int main()
     RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
 
     //--------------------------------------------------------------------------------------
-    SetTargetFPS(144);               // Set our game to run at 60 frames-per-second
+    // SetTargetFPS(300);               // Set our game to run at 144 frames-per-second
     //--------------------------------------------------------------------------------------
 
     // Main game loop
@@ -140,7 +144,7 @@ int main()
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
 
         // Check collision with ground
-        if (!isOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform)) {
+        if (!isOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform) && (cameraMode != CAMERA_FREE)) {
             // Move a player to their height above the mesh
             Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
             RayCollision rayCollision = GetRayCollisionMesh(ray, heightMapMeshLow, heightMapTransform);
