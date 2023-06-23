@@ -21,8 +21,17 @@
 
 #include "raylib.h"
 #include "raymath.h"
+#include "rcamera.h"
 
 #define MAP_SIZE 1024.0f
+
+bool isOnMesh(Vector3 position, float height, Mesh * mesh, Matrix transform) {
+    Ray ray = (Ray){position, (Vector3){0, -1, 0}};
+    RayCollision rayCollision = GetRayCollisionMesh(ray, *mesh, transform);
+    if (((rayCollision.distance - height) <= EPSILON) && ((rayCollision.distance - height) >= -EPSILON)) return true;
+    // if (((rayCollision.distance - height) <= EPSILON) && rayCollision.hit) return true;
+    return false;
+}
 
 //----------------------------------------------------------------------------------
 // Local Variables Definition (local to this module)
@@ -40,6 +49,8 @@ int main()
     const int screenWidth = 1920;
     const int screenHeight = 1080;
 
+    const float playerHeight = 4.0f;
+
     InitWindow(screenWidth, screenHeight, "bad game made by a bad gamer");
 
     Shader shader = LoadShader(0, "shaders/first.fs");
@@ -48,7 +59,7 @@ int main()
 
     // Define the camera to look into our 3d world (position, target, up vector)
     Camera camera = { 0 };
-    camera.position = (Vector3){ 0.0f, 2.0f, 4.0f };    // Camera position
+    camera.position = (Vector3){ 0.0f, 2.0f, playerHeight };    // Camera position
     camera.target = (Vector3){ 0.0f, 2.0f, 0.0f };      // Camera looking at point
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
     camera.fovy = 60.0f;                                // Camera field-of-view Y
@@ -65,6 +76,17 @@ int main()
     Mesh heightMapMesh = GenMeshHeightmap(heightMapImage, (Vector3){MAP_SIZE, MAP_SIZE/8, MAP_SIZE});
     Model heightMap = LoadModelFromMesh(heightMapMesh);
     heightMap.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexture;
+
+    char filenameLow[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap256.png";
+    Image heightMapImageLow = LoadImage(filenameLow);
+    Texture2D heightMapTextureLow = LoadTextureFromImage(heightMapImageLow);
+    Mesh heightMapMeshLow = GenMeshHeightmap(heightMapImageLow, (Vector3){MAP_SIZE, MAP_SIZE/8, MAP_SIZE});
+    Model heightMapLow = LoadModelFromMesh(heightMapMeshLow);
+    heightMapLow.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTextureLow;
+
+    Vector3 heightMapPos = (Vector3){-MAP_SIZE/2, 0, -MAP_SIZE/2};
+    Matrix heightMapTranslation = MatrixTranslate(heightMapPos.x, heightMapPos.y, heightMapPos.z);
+    Matrix heightMapTransform = MatrixMultiply(heightMapLow.transform, heightMapTranslation);
 
     // float vertices[] = {
     //     -0.5f, -0.5f, 0.0f,
@@ -100,6 +122,8 @@ int main()
         //----------------------------------------------------------------------------------
         // Update Camera
         //----------------------------------------------------------------------------------
+        
+        // Sprint
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
             CAMERA_MOVE_SPEED = 0.2f;
         } 
@@ -107,6 +131,7 @@ int main()
             CAMERA_MOVE_SPEED = 0.1f;
         }
 
+        // Directional Movement
         Vector2 mousePositionDelta = GetMouseDelta();
         Vector3 moveVec = (Vector3){IsKeyDown(KEY_W) - IsKeyDown(KEY_S),
                                     IsKeyDown(KEY_D) - IsKeyDown(KEY_A),
@@ -114,13 +139,22 @@ int main()
         moveVec = Vector3Scale(Vector3Normalize(moveVec), CAMERA_MOVE_SPEED);
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
 
+        // Check collision with ground
+        if (!isOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform)) {
+            // Move a player to their height above the mesh
+            Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
+            RayCollision rayCollision = GetRayCollisionMesh(ray, heightMapMeshLow, heightMapTransform);
+            camera.position.y = rayCollision.point.y + playerHeight;
+            camera.target.y += 1000000 - rayCollision.distance + playerHeight;
+        }
+
         UpdateCameraPro(&camera,
                         moveVec,
                         (Vector3){  mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY,
                                     mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY,
                                     0.0},
-                        0);
-        
+                        0.0);
+
         //----------------------------------------------------------------------------------
         // Draw
         //----------------------------------------------------------------------------------
@@ -130,7 +164,8 @@ int main()
 
             BeginMode3D(camera);
 
-                DrawModel(heightMap, (Vector3){-MAP_SIZE/2, 0, -MAP_SIZE/2}, 1.0f, WHITE);
+                DrawModel(heightMap, heightMapPos, 1.0f, WHITE);
+                // DrawMesh(heightMapMeshLow, LoadMaterialDefault(), heightMapTransform);
                 DrawCube(cubePosition, 2.0f, 2.0f, 2.0f, RED);
                 DrawCubeWires(cubePosition, 2.0f, 2.0f, 2.0f, MAROON);
                 DrawGrid(10, 1.0f);
