@@ -22,15 +22,79 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "rcamera.h"
+#include <math.h>
+#include <stdlib.h>
 
 #define MAP_SIZE 1024.0f
+#define CHUNK_SIZE 128.0f
+#define CHUNK_TEX_SCALE 4.0f
 
-bool isOnMesh(Vector3 position, float height, Mesh * mesh, Matrix transform) {
+bool IsOnMesh(Vector3 position, float height, Mesh * mesh, Matrix transform) {
     Ray ray = (Ray){position, (Vector3){0, -1, 0}};
     RayCollision rayCollision = GetRayCollisionMesh(ray, *mesh, transform);
     if (((rayCollision.distance - height) <= EPSILON) && ((rayCollision.distance - height) >= -EPSILON)) return true;
     // if (((rayCollision.distance - height) <= EPSILON) && rayCollision.hit) return true;
     return false;
+}
+
+//Make chunks
+typedef struct Chunk {
+    Vector2 chunkID;                // Chunk ID, indicates its location in the world
+    Model* models;
+    Vector3* modelLocs;
+    int numModels;
+} Chunk;
+
+Vector2 GetPosChunk(Vector3 position) {
+    return (Vector2){floor(position.x/CHUNK_SIZE), floor(position.z/CHUNK_SIZE)};
+}
+
+void LoadChunk(Chunk* chunk, Vector2 chunkID) { // Loads the chunk data for chunkID into chunk
+    // for now all we will have in the chunk is the section of the height map within that chunk
+    chunk->chunkID = chunkID;
+
+    char filename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap1024.png";
+    Image heightMapImage = LoadImage(filename);
+    Rectangle chunkMapRec = {
+        .x = chunkID.x * CHUNK_SIZE + MAP_SIZE / 2,
+        .y = chunkID.y * CHUNK_SIZE + MAP_SIZE / 2,
+        .width = CHUNK_SIZE + 1,
+        .height = CHUNK_SIZE + 1,
+    };
+    if (chunkMapRec.x + chunkMapRec.width  >= MAP_SIZE) chunkMapRec.width = CHUNK_SIZE;
+    if (chunkMapRec.y + chunkMapRec.height >= MAP_SIZE) chunkMapRec.height = CHUNK_SIZE;
+    // put some error checking and shared adjacent pixel logic here to fix world seams
+    ImageCrop(&heightMapImage, chunkMapRec);
+    Mesh heightMapMesh = GenMeshHeightmap(heightMapImage, (Vector3){CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE});
+    
+    char texfilename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmaptexture4096.png";
+    Rectangle chunkMapTexRec = {
+        .x = (chunkID.x * CHUNK_SIZE + MAP_SIZE/2) * CHUNK_TEX_SCALE,
+        .y = (chunkID.y * CHUNK_SIZE + MAP_SIZE/2) * CHUNK_TEX_SCALE,
+        .width = CHUNK_SIZE * CHUNK_TEX_SCALE,
+        .height = CHUNK_SIZE * CHUNK_TEX_SCALE,
+    };
+    
+    Image heightMapTexImage = LoadImage(texfilename);
+    ImageCrop(&heightMapTexImage, chunkMapTexRec);
+    chunk->numModels = 1;
+    chunk->modelLocs = (Vector3*)malloc(sizeof(Vector3*) * chunk->numModels);
+    chunk->modelLocs[0] = (Vector3){chunkID.x * CHUNK_SIZE, 0 , chunkID.y * CHUNK_SIZE}; // give chunk origin coordinate to ground mesh origin
+
+    chunk->models = (Model*)malloc(sizeof(Model*) * chunk->numModels);
+    Model heightMap = LoadModelFromMesh(heightMapMesh);
+    chunk->models[0] = LoadModelFromMesh(heightMapMesh);
+    // chunk->models[0] = heightMap;
+    // chunk->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexTexture;
+    chunk->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = LoadTextureFromImage(heightMapTexImage);
+    UnloadImage(heightMapImage);
+    UnloadImage(heightMapTexImage);
+    // UnloadMesh(heightMapMesh);
+}
+
+void DrawChunk(Chunk chunk, int lodLevel) {
+    // For now the first model will always be the ground, draw that in relation to the chunk origin
+    DrawModel(chunk.models[0], chunk.modelLocs[0], 1.0f, WHITE);
 }
 
 //----------------------------------------------------------------------------------
@@ -46,13 +110,13 @@ int main()
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 2560;
-    const int screenHeight = 1440;
+    const int screenWidth = 1920;
+    const int screenHeight = 1080;
 
-    const float playerHeight = 4.0f;
+    const float playerHeight = 2.0f;
 
     InitWindow(screenWidth, screenHeight, "bad game made by a bad gamer");
-    ToggleFullscreen();
+    // ToggleFullscreen();
 
     Shader shader = LoadShader(0, "shaders/first.fs");
     Shader shaderblur = LoadShader(0, "shaders/blur.fs");
@@ -71,16 +135,6 @@ int main()
 
     int cameraMode = CAMERA_FIRST_PERSON;
 
-    char filename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap1024.png";
-    Image heightMapImage = LoadImage(filename);
-    Texture2D heightMapTexture = LoadTextureFromImage(heightMapImage);
-    Mesh heightMapMesh = GenMeshHeightmap(heightMapImage, (Vector3){MAP_SIZE, MAP_SIZE/8, MAP_SIZE});
-    Model heightMap = LoadModelFromMesh(heightMapMesh);
-    char texfilename[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmaptexture4096.png";
-    Image heightMapTexImage = LoadImage(texfilename);
-    Texture2D heightMapTexTexture = LoadTextureFromImage(heightMapTexImage);
-    heightMap.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexTexture;
-
     char filenameLow[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap256.png";
     Image heightMapImageLow = LoadImage(filenameLow);
     Texture2D heightMapTextureLow = LoadTextureFromImage(heightMapImageLow);
@@ -92,11 +146,13 @@ int main()
     Matrix heightMapTranslation = MatrixTranslate(heightMapPos.x, heightMapPos.y, heightMapPos.z);
     Matrix heightMapTransform = MatrixMultiply(heightMapLow.transform, heightMapTranslation);
 
-    // float vertices[] = {
-    //     -0.5f, -0.5f, 0.0f,
-    //     0.5f, -0.5f, 0.0f,
-    //     0.0f,  0.5f, 0.0f
-    // };
+    // Load chunks
+    Chunk chunks[64];
+    for (int chunkx = -4; chunkx < 4; chunkx += 1) {
+        for (int chunky = -4; chunky < 4; chunky += 1) {
+            LoadChunk(&chunks[(chunkx+4) * 8 + (chunky+4)], (Vector2){(float)chunkx, (float)chunky});
+        }
+    }
 
     DisableCursor();                    // Limit cursor to relative movement inside the window
 
@@ -104,7 +160,7 @@ int main()
     RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
 
     //--------------------------------------------------------------------------------------
-    // SetTargetFPS(300);               // Set our game to run at 144 frames-per-second
+    // SetTargetFPS(144);               // Set our game to run at 144 frames-per-second
     //--------------------------------------------------------------------------------------
 
     // Main game loop
@@ -144,7 +200,7 @@ int main()
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
 
         // Check collision with ground
-        if (!isOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform) && (cameraMode != CAMERA_FREE)) {
+        if (!IsOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform) && (cameraMode != CAMERA_FREE)) {
             // Move a player to their height above the mesh
             Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
             RayCollision rayCollision = GetRayCollisionMesh(ray, heightMapMeshLow, heightMapTransform);
@@ -168,8 +224,14 @@ int main()
 
             BeginMode3D(camera);
 
-                DrawModel(heightMap, heightMapPos, 1.0f, WHITE);
+                // DrawModel(heightMap, heightMapPos, 1.0f, WHITE);
                 // DrawMesh(heightMapMeshLow, LoadMaterialDefault(), heightMapTransform);
+
+                for (int chunkx = -4; chunkx < 4; chunkx += 1) {
+                    for (int chunky = -4; chunky < 4; chunky += 1) {
+                        DrawModel(chunks[(chunkx+4) * 8 + (chunky+4)].models[0], chunks[(chunkx+4) * 8 + (chunky+4)].modelLocs[0], 1.0f, WHITE);
+                    }
+                }
                 DrawCube(cubePosition, 2.0f, 2.0f, 2.0f, RED);
                 DrawCubeWires(cubePosition, 2.0f, 2.0f, 2.0f, MAROON);
                 DrawGrid(10, 1.0f);
