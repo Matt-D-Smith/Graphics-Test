@@ -24,6 +24,7 @@
 #include "rcamera.h"
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #define MAP_SIZE 1024.0f
 #define CHUNK_SIZE 128.0f
@@ -61,9 +62,8 @@ void LoadChunk(Chunk* chunk, Vector2 chunkID) { // Loads the chunk data for chun
         .width = CHUNK_SIZE + 1,
         .height = CHUNK_SIZE + 1,
     };
-    if (chunkMapRec.x + chunkMapRec.width  >= MAP_SIZE) chunkMapRec.width = CHUNK_SIZE;
-    if (chunkMapRec.y + chunkMapRec.height >= MAP_SIZE) chunkMapRec.height = CHUNK_SIZE;
-    // put some error checking and shared adjacent pixel logic here to fix world seams
+    if (chunkMapRec.x + chunkMapRec.width  > MAP_SIZE) chunkMapRec.width = CHUNK_SIZE;
+    if (chunkMapRec.y + chunkMapRec.height > MAP_SIZE) chunkMapRec.height = CHUNK_SIZE;
     ImageCrop(&heightMapImage, chunkMapRec);
     Mesh heightMapMesh = GenMeshHeightmap(heightMapImage, (Vector3){CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE});
     
@@ -78,14 +78,11 @@ void LoadChunk(Chunk* chunk, Vector2 chunkID) { // Loads the chunk data for chun
     Image heightMapTexImage = LoadImage(texfilename);
     ImageCrop(&heightMapTexImage, chunkMapTexRec);
     chunk->numModels = 1;
-    chunk->modelLocs = (Vector3*)malloc(sizeof(Vector3*) * chunk->numModels);
+    chunk->modelLocs = (Vector3*)malloc(sizeof(Vector3) * chunk->numModels);
     chunk->modelLocs[0] = (Vector3){chunkID.x * CHUNK_SIZE, 0 , chunkID.y * CHUNK_SIZE}; // give chunk origin coordinate to ground mesh origin
 
-    chunk->models = (Model*)malloc(sizeof(Model*) * chunk->numModels);
-    Model heightMap = LoadModelFromMesh(heightMapMesh);
+    chunk->models = (Model*)malloc(sizeof(Model) * chunk->numModels);
     chunk->models[0] = LoadModelFromMesh(heightMapMesh);
-    // chunk->models[0] = heightMap;
-    // chunk->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTexTexture;
     chunk->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = LoadTextureFromImage(heightMapTexImage);
     UnloadImage(heightMapImage);
     UnloadImage(heightMapTexImage);
@@ -124,7 +121,7 @@ int main()
 
     // Define the camera to look into our 3d world (position, target, up vector)
     Camera camera = { 0 };
-    camera.position = (Vector3){ 0.0f, playerHeight, 0.0f };    // Camera position
+    camera.position = (Vector3){ 0.0f, playerHeight, 2.0f };    // Camera position
     camera.target = (Vector3){ 0.0f, 2.0f, 0.0f };      // Camera looking at point
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
     camera.fovy = 60.0f;                                // Camera field-of-view Y
@@ -134,10 +131,7 @@ int main()
     float CAMERA_MOUSE_MOVE_SENSITIVITY = 0.06f;
 
     int cameraMode = CAMERA_FIRST_PERSON;
-
-    Vector3 heightMapPos = (Vector3){-MAP_SIZE/2, 0, -MAP_SIZE/2};
-    Matrix heightMapTranslation = MatrixTranslate(heightMapPos.x, heightMapPos.y, heightMapPos.z);
-    Matrix heightMapTransform = MatrixMultiply(heightMapLow.transform, heightMapTranslation);
+    // int cameraMode = CAMERA_FREE;
 
     // Load chunks
     Chunk chunks[64];
@@ -195,7 +189,7 @@ int main()
         // Check collision with ground -- THIS NEEDS UPDATE TO INCLUDE MOVEVEC
         Vector2 moveChunk = GetPosChunk(camera.position);
         int chunkIdx = ((int)moveChunk.x+4) * 8 + ((int)moveChunk.y+4);
-        if ((cameraMode != CAMERA_FREE) && !IsOnMesh(camera.position, playerHeight, &chunks[chunkIdx].models->meshes[0], heightMapTransform)) {
+        if ((cameraMode != CAMERA_FREE) && !IsOnMesh(camera.position, playerHeight, &chunks[chunkIdx].models->meshes[0], MatrixTranslate(chunks[chunkIdx].modelLocs[0].x, chunks[chunkIdx].modelLocs[0].y, chunks[chunkIdx].modelLocs[0].z))) {
             // Move a player to their height above the mesh
             Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
             RayCollision rayCollision = GetRayCollisionMesh(ray, 
@@ -242,6 +236,10 @@ int main()
                 DrawGrid(10, 1.0f);
 
             EndMode3D();
+
+            char posText[40];
+            sprintf(posText, "%f %f %f", camera.position.x, camera.position.y, camera.position.z);
+            DrawText(posText, 20, 40, 20, BLACK);
 
             // BeginShaderMode(shaderblur);
             //     DrawTextureRec(target.texture, (Rectangle){ 0, 0, (float)target.texture.width, (float)-target.texture.height }, (Vector2){ 0, 0 }, WHITE); // render texture with shader applied
