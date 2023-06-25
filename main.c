@@ -110,13 +110,13 @@ int main()
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 1920;
-    const int screenHeight = 1080;
+    const int screenWidth = 2560;
+    const int screenHeight = 1440;
 
     const float playerHeight = 2.0f;
 
     InitWindow(screenWidth, screenHeight, "bad game made by a bad gamer");
-    // ToggleFullscreen();
+    ToggleFullscreen();
 
     Shader shader = LoadShader(0, "shaders/first.fs");
     Shader shaderblur = LoadShader(0, "shaders/blur.fs");
@@ -124,7 +124,7 @@ int main()
 
     // Define the camera to look into our 3d world (position, target, up vector)
     Camera camera = { 0 };
-    camera.position = (Vector3){ 0.0f, 2.0f, playerHeight };    // Camera position
+    camera.position = (Vector3){ 0.0f, playerHeight, 0.0f };    // Camera position
     camera.target = (Vector3){ 0.0f, 2.0f, 0.0f };      // Camera looking at point
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
     camera.fovy = 60.0f;                                // Camera field-of-view Y
@@ -134,13 +134,6 @@ int main()
     float CAMERA_MOUSE_MOVE_SENSITIVITY = 0.06f;
 
     int cameraMode = CAMERA_FIRST_PERSON;
-
-    char filenameLow[] = "C:/Users/Matt/Desktop/Hardware-Stuff/Noise Textures/heightmap256.png";
-    Image heightMapImageLow = LoadImage(filenameLow);
-    Texture2D heightMapTextureLow = LoadTextureFromImage(heightMapImageLow);
-    Mesh heightMapMeshLow = GenMeshHeightmap(heightMapImageLow, (Vector3){MAP_SIZE, MAP_SIZE/8, MAP_SIZE});
-    Model heightMapLow = LoadModelFromMesh(heightMapMeshLow);
-    heightMapLow.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = heightMapTextureLow;
 
     Vector3 heightMapPos = (Vector3){-MAP_SIZE/2, 0, -MAP_SIZE/2};
     Matrix heightMapTranslation = MatrixTranslate(heightMapPos.x, heightMapPos.y, heightMapPos.z);
@@ -199,13 +192,19 @@ int main()
         moveVec = Vector3Scale(Vector3Normalize(moveVec), CAMERA_MOVE_SPEED);
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
 
-        // Check collision with ground
-        if (!IsOnMesh(camera.position, playerHeight, &heightMapMeshLow, heightMapTransform) && (cameraMode != CAMERA_FREE)) {
+        // Check collision with ground -- THIS NEEDS UPDATE TO INCLUDE MOVEVEC
+        Vector2 moveChunk = GetPosChunk(camera.position);
+        int chunkIdx = ((int)moveChunk.x+4) * 8 + ((int)moveChunk.y+4);
+        if ((cameraMode != CAMERA_FREE) && !IsOnMesh(camera.position, playerHeight, &chunks[chunkIdx].models->meshes[0], heightMapTransform)) {
             // Move a player to their height above the mesh
             Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
-            RayCollision rayCollision = GetRayCollisionMesh(ray, heightMapMeshLow, heightMapTransform);
-            camera.position.y = rayCollision.point.y + playerHeight;
-            camera.target.y += 1000000 - rayCollision.distance + playerHeight;
+            RayCollision rayCollision = GetRayCollisionMesh(ray, 
+                                                            chunks[chunkIdx].models->meshes[0], 
+                                                            MatrixTranslate(chunks[chunkIdx].modelLocs[0].x, chunks[chunkIdx].modelLocs[0].y, chunks[chunkIdx].modelLocs[0].z));
+            if (rayCollision.hit == true) {
+                camera.position.y = rayCollision.point.y + playerHeight;
+                camera.target.y += 1000000 - rayCollision.distance + playerHeight;
+            }
         }
 
         UpdateCameraPro(&camera,
@@ -230,6 +229,12 @@ int main()
                 for (int chunkx = -4; chunkx < 4; chunkx += 1) {
                     for (int chunky = -4; chunky < 4; chunky += 1) {
                         DrawModel(chunks[(chunkx+4) * 8 + (chunky+4)].models[0], chunks[(chunkx+4) * 8 + (chunky+4)].modelLocs[0], 1.0f, WHITE);
+                        // //Draw chunk origin
+                        // Ray ray = {
+                        //     .position = (Vector3){chunkx * CHUNK_SIZE, 0.0, chunky * CHUNK_SIZE},
+                        //     .direction = (Vector3){0.0, 1.0, 0.0},
+                        // };
+                        // DrawRay(ray, RED);
                     }
                 }
                 DrawCube(cubePosition, 2.0f, 2.0f, 2.0f, RED);
