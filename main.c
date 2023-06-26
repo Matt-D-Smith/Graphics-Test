@@ -126,6 +126,7 @@ int main()
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
     camera.fovy = 60.0f;                                // Camera field-of-view Y
     camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
+    Camera updateCamera = camera;
 
     float CAMERA_MOVE_SPEED = 0.1f;         // Camera movement speed
     float CAMERA_MOUSE_MOVE_SENSITIVITY = 0.06f;
@@ -187,6 +188,20 @@ int main()
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
 
         // Check collision with ground -- THIS NEEDS UPDATE TO INCLUDE MOVEVEC
+        updateCamera = camera;
+        UpdateCameraPro(&camera,
+                        moveVec,
+                        (Vector3){  mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY,
+                                    mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY,
+                                    0.0},
+                        0.0);
+
+        // Bounds checking
+        if (camera.position.x >  MAP_SIZE/2) camera.position.x = updateCamera.position.x;
+        if (camera.position.z >  MAP_SIZE/2) camera.position.z = updateCamera.position.z;
+        if (camera.position.x < -MAP_SIZE/2) camera.position.x = updateCamera.position.x;
+        if (camera.position.z < -MAP_SIZE/2) camera.position.z = updateCamera.position.z;
+
         Vector2 moveChunk = GetPosChunk(camera.position);
         int chunkIdx = ((int)moveChunk.x+4) * 8 + ((int)moveChunk.y+4);
         if ((cameraMode != CAMERA_FREE) && !IsOnMesh(camera.position, playerHeight, &chunks[chunkIdx].models->meshes[0], MatrixTranslate(chunks[chunkIdx].modelLocs[0].x, chunks[chunkIdx].modelLocs[0].y, chunks[chunkIdx].modelLocs[0].z))) {
@@ -200,13 +215,6 @@ int main()
                 camera.target.y += 1000000 - rayCollision.distance + playerHeight;
             }
         }
-
-        UpdateCameraPro(&camera,
-                        moveVec,
-                        (Vector3){  mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY,
-                                    mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY,
-                                    0.0},
-                        0.0);
 
         //----------------------------------------------------------------------------------
         // Draw
