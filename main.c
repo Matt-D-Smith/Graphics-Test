@@ -38,19 +38,24 @@ bool IsOnMesh(Vector3 position, float height, Mesh * mesh, Matrix transform) {
     return false;
 }
 
+typedef struct IVector2 {
+    int x;                // Vector x component
+    int y;                // Vector y component
+} IVector2;
+
 //Make chunks
 typedef struct Chunk {
-    Vector2 chunkID;                // Chunk ID, indicates its location in the world
+    IVector2 chunkID;                // Chunk ID, indicates its location in the world
     Model* models;
     Vector3* modelLocs;
     int numModels;
 } Chunk;
 
-Vector2 GetPosChunk(Vector3 position) {
-    return (Vector2){floor(position.x/CHUNK_SIZE), floor(position.z/CHUNK_SIZE)};
+IVector2 GetPosChunk(Vector3 position) {
+    return (IVector2){(int)floor(position.x/CHUNK_SIZE), (int)floor(position.z/CHUNK_SIZE)};
 }
 
-void LoadChunk(Chunk* chunk, Vector2 chunkID) { // Loads the chunk data for chunkID into chunk
+void LoadChunk(Chunk* chunk, IVector2 chunkID) { // Loads the chunk data for chunkID into chunk
     // for now all we will have in the chunk is the section of the height map within that chunk
     chunk->chunkID = chunkID;
 
@@ -138,7 +143,7 @@ int main()
     Chunk chunks[64];
     for (int chunkx = -4; chunkx < 4; chunkx += 1) {
         for (int chunky = -4; chunky < 4; chunky += 1) {
-            LoadChunk(&chunks[(chunkx+4) * 8 + (chunky+4)], (Vector2){(float)chunkx, (float)chunky});
+            LoadChunk(&chunks[(chunkx+4) * 8 + (chunky+4)], (IVector2){chunkx, chunky});
         }
     }
 
@@ -173,10 +178,12 @@ int main()
         
         // Sprint
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
-            CAMERA_MOVE_SPEED = 0.2f;
+            // CAMERA_MOVE_SPEED = 20.0f;
+            CAMERA_MOVE_SPEED = 200.0f;
         } 
         else {
-            CAMERA_MOVE_SPEED = 0.1f;
+            // CAMERA_MOVE_SPEED = 10.0f;
+            CAMERA_MOVE_SPEED = 100.0f;
         }
 
         // Directional Movement
@@ -186,6 +193,9 @@ int main()
                                     0.0};
         moveVec = Vector3Scale(Vector3Normalize(moveVec), CAMERA_MOVE_SPEED);
         moveVec.z = (cameraMode == CAMERA_FREE) * (IsKeyDown(KEY_SPACE) - IsKeyDown(KEY_LEFT_ALT)) * CAMERA_MOVE_SPEED;
+
+        // Scale moveVec by deltaTime to get a consistent speed
+        moveVec = Vector3Scale(moveVec,GetFrameTime());
 
         // Check collision with ground -- THIS NEEDS UPDATE TO INCLUDE MOVEVEC
         updateCamera = camera;
@@ -202,8 +212,8 @@ int main()
         if (camera.position.x < -MAP_SIZE/2) camera.position.x = updateCamera.position.x;
         if (camera.position.z < -MAP_SIZE/2) camera.position.z = updateCamera.position.z;
 
-        Vector2 moveChunk = GetPosChunk(camera.position);
-        int chunkIdx = ((int)moveChunk.x+4) * 8 + ((int)moveChunk.y+4);
+        IVector2 moveChunk = GetPosChunk(camera.position);
+        int chunkIdx = (moveChunk.x+4) * 8 + (moveChunk.y+4);
         if ((cameraMode != CAMERA_FREE) && !IsOnMesh(camera.position, playerHeight, &chunks[chunkIdx].models->meshes[0], MatrixTranslate(chunks[chunkIdx].modelLocs[0].x, chunks[chunkIdx].modelLocs[0].y, chunks[chunkIdx].modelLocs[0].z))) {
             // Move a player to their height above the mesh
             Ray ray = (Ray){Vector3Add(camera.position, (Vector3){0,1000000,0}), (Vector3){0.0, -1.0, 0.0}};
