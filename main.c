@@ -22,6 +22,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "rcamera.h"
+#include "rlgl.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -29,6 +30,11 @@
 #define MAP_SIZE 1024.0f
 #define CHUNK_SIZE 128.0f
 #define CHUNK_TEX_SCALE 4.0f
+
+#ifndef M_PI
+#define M_PI (3.14159265358979323846)
+#endif
+
 
 bool IsOnMesh(Vector3 position, float height, Mesh * mesh, Matrix transform) {
     Ray ray = (Ray){position, (Vector3){0, -1, 0}};
@@ -99,11 +105,109 @@ void DrawChunk(Chunk chunk, int lodLevel) {
     DrawModel(chunk.models[0], chunk.modelLocs[0], 1.0f, WHITE);
 }
 
+
+Mesh skyMesh;
+Model skyModel;
+Shader skyShader;
+
+void makeSky() {
+	skyMesh = GenMeshSphere(45000, 32, 15);
+	skyModel = LoadModelFromMesh(skyMesh);
+	skyShader = LoadShader("shaders/sky.vs", "shaders/sky.fs");
+
+    float turbidityVal = 4.7; // 4.75;
+    float rayleighVal = 2.28; // 6.77;
+    float mieCoefficientVal = 0.003; //0.005; // 0.0191;
+    float mieDirectionalGVal = 0.82; // 0.793;
+    float luminanceVal = 1.00; // 1.1735;
+    float inclinationVal = 0.3; //0.4983; // 0.4956;
+    float azimuthVal = 0.1979; // 0.2174;
+    float refractiveIndexVal = 1.00029; // 1.000633;
+    float numMoleculesVal = 2.542e25;
+    float depolarizationFactorVal = 0.02; // 0.01;
+    float rayleighZenithLengthVal = 8400; // 1425;
+    float mieVVal = 3.936; // 4.042;
+    float mieZenithLengthVal = 34000; // 1600;
+    float sunIntensityFactorVal = 1000; // 2069;
+    float sunIntensityFalloffSteepnessVal = 1.5; // 2.26;
+    float sunAngularDiameterDegreesVal = 0.00933; // 0.01487;
+    float tonemapWeightingVal = 9.50;
+    Vector3 primariesVal = { 6.8e-7, 5.5e-7, 4.5e-7 }; // { 7.929e-7, 3.766e-7, 3.172e-7 };
+    Vector3 mieKCoefficientVal = { 0.686, 0.678, 0.666 }; // { 0.686, 0.678, 0.666 };
+    Vector3 cameraPosVal = { 1000, -400, 0 };
+    Vector3 sunPositionVal;
+
+    float theta = M_PI * (inclinationVal - 0.5);
+    float phi = 2 * M_PI * (azimuthVal - 0.5);
+
+    float distance = 4000;
+    sunPositionVal.x = distance * cos(phi);
+    sunPositionVal.y = distance * sin(phi) * sin(theta);
+    sunPositionVal.z = distance * sin(phi) * cos(theta);
+
+    int turbidityLoc                    = GetShaderLocation(skyShader, "turbidity");
+    int rayleighLoc                     = GetShaderLocation(skyShader, "rayleigh");
+    int mieCoefficientLoc               = GetShaderLocation(skyShader, "mieCoefficient");
+    int mieDirectionalGLoc              = GetShaderLocation(skyShader, "mieDirectionalG");
+    int luminanceLoc                    = GetShaderLocation(skyShader, "luminance");
+    int inclinationLoc                  = GetShaderLocation(skyShader, "inclination");
+    int azimuthLoc                      = GetShaderLocation(skyShader, "azimuth");
+    int refractiveIndexLoc              = GetShaderLocation(skyShader, "refractiveIndex");
+    int numMoleculesLoc                 = GetShaderLocation(skyShader, "numMolecules");
+    int depolarizationFactorLoc         = GetShaderLocation(skyShader, "depolarizationFactor");
+    int rayleighZenithLengthLoc         = GetShaderLocation(skyShader, "rayleighZenithLength");
+    int mieVLoc                         = GetShaderLocation(skyShader, "mieV");
+    int mieZenithLengthLoc              = GetShaderLocation(skyShader, "mieZenithLength");
+    int sunIntensityFactorLoc           = GetShaderLocation(skyShader, "sunIntensityFactor");
+    int sunIntensityFalloffSteepnessLoc = GetShaderLocation(skyShader, "sunIntensityFalloffSteepness");
+    int sunAngularDiameterDegreesLoc    = GetShaderLocation(skyShader, "sunAngularDiameterDegrees");
+    int tonemapWeightingLoc             = GetShaderLocation(skyShader, "tonemapWeighting");
+    int primariesLoc                    = GetShaderLocation(skyShader, "primaries");
+    int mieKCoefficientLoc              = GetShaderLocation(skyShader, "mieKCoefficient");
+    int cameraPosLoc                    = GetShaderLocation(skyShader, "cameraPos");
+    int sunPositionLoc                  = GetShaderLocation(skyShader, "sunPosition");
+
+    SetShaderValue(skyShader, turbidityLoc,                    &turbidityVal,                    SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, rayleighLoc,                     &rayleighVal,                     SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, mieCoefficientLoc,               &mieCoefficientVal,               SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, mieDirectionalGLoc,              &mieDirectionalGVal,              SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, luminanceLoc,                    &luminanceVal,                    SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, inclinationLoc,                  &inclinationVal,                  SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, azimuthLoc,                      &azimuthVal,                      SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, refractiveIndexLoc,              &refractiveIndexVal,              SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, numMoleculesLoc,                 &numMoleculesVal,                 SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, depolarizationFactorLoc,         &depolarizationFactorVal,         SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, rayleighZenithLengthLoc,         &rayleighZenithLengthVal,         SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, mieVLoc,                         &mieVVal,                         SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, mieZenithLengthLoc,              &mieZenithLengthVal,              SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, sunIntensityFactorLoc,           &sunIntensityFactorVal,           SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, sunIntensityFalloffSteepnessLoc, &sunIntensityFalloffSteepnessVal, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, sunAngularDiameterDegreesLoc,    &sunAngularDiameterDegreesVal,    SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, tonemapWeightingLoc,             &tonemapWeightingVal,             SHADER_UNIFORM_FLOAT);
+    SetShaderValue(skyShader, primariesLoc,                    &primariesVal,                    SHADER_UNIFORM_VEC3);
+    SetShaderValue(skyShader, mieKCoefficientLoc,              &mieKCoefficientVal,              SHADER_UNIFORM_VEC3);
+    SetShaderValue(skyShader, cameraPosLoc,                    &cameraPosVal,                    SHADER_UNIFORM_VEC3);
+    SetShaderValue(skyShader, sunPositionLoc,                  &sunPositionVal,                  SHADER_UNIFORM_VEC3);
+
+
+	skyModel.materials[0].shader = skyShader;
+}
+
 //----------------------------------------------------------------------------------
 // Local Variables Definition (local to this module)
 //----------------------------------------------------------------------------------
 Camera camera = { 0 };
 Vector3 cubePosition = { 0 };
+
+void moveSun(float az, float el, float* azimuthVal, float* inclinationVal) {
+    int azimuthLoc = GetShaderLocation(skyShader, "azimuth");
+    *azimuthVal += az;
+    SetShaderValue(skyShader, azimuthLoc, &azimuthVal, SHADER_UNIFORM_FLOAT);
+
+    int inclinationLoc = GetShaderLocation(skyShader, "inclination");
+    *inclinationVal += el;
+    SetShaderValue(skyShader, inclinationLoc, &inclinationVal, SHADER_UNIFORM_FLOAT);
+}
 
 //----------------------------------------------------------------------------------
 // Main entry point
@@ -120,9 +224,23 @@ int main()
     InitWindow(screenWidth, screenHeight, "bad game made by a bad gamer");
     ToggleFullscreen();
 
-    Shader shader = LoadShader(0, "shaders/first.fs");
-    Shader shaderblur = LoadShader(0, "shaders/blur.fs");
+    //----------------------------------------------------------------------------------
+    // Initialize Shaders
+    //----------------------------------------------------------------------------------
+
+    // Shader shaderFirst = LoadShader("shaders/first.vs", "shaders/first.fs");
+    // Shader shaderBlur = LoadShader(0, "shaders/blur.fs");
+
+    makeSky();
+    float inclinationVal = 0.4983; // 0.4956;
+    float azimuthVal = 0.1979; // 0.2174;
+
+
+    // Default Shader for final render to screen
     Shader defaultShader = LoadShader(0, 0);
+    //----------------------------------------------------------------------------------
+    // End Shaders
+    //----------------------------------------------------------------------------------
 
     // Define the camera to look into our 3d world (position, target, up vector)
     Camera camera = { 0 };
@@ -160,14 +278,12 @@ int main()
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
 
-        if (IsKeyPressed(KEY_ONE))
-        {
+        if (IsKeyPressed(KEY_ONE)) {
             cameraMode = CAMERA_FIRST_PERSON;
             camera.up = (Vector3){ 0.0f, 1.0f, 0.0f }; // Reset roll
         }
 
-        if (IsKeyPressed(KEY_TWO))
-        {
+        if (IsKeyPressed(KEY_TWO)) {
             cameraMode = CAMERA_FREE;
             camera.up = (Vector3){ 0.0f, 1.0f, 0.0f }; // Reset roll
         }
@@ -207,10 +323,22 @@ int main()
                         0.0);
 
         // Bounds checking
-        if (camera.position.x >  MAP_SIZE/2) camera.position.x = updateCamera.position.x;
-        if (camera.position.z >  MAP_SIZE/2) camera.position.z = updateCamera.position.z;
-        if (camera.position.x < -MAP_SIZE/2) camera.position.x = updateCamera.position.x;
-        if (camera.position.z < -MAP_SIZE/2) camera.position.z = updateCamera.position.z;
+        if (camera.position.x >  MAP_SIZE/2) {
+            camera.position.x = updateCamera.position.x;
+            camera.target.x = updateCamera.target.x;
+        }
+        if (camera.position.z >  MAP_SIZE/2) {
+            camera.position.z = updateCamera.position.z;
+            camera.target.z = updateCamera.target.z;
+        }
+        if (camera.position.x < -MAP_SIZE/2) {
+            camera.position.x = updateCamera.position.x;
+            camera.target.x = updateCamera.target.x;
+        }
+        if (camera.position.z < -MAP_SIZE/2) {
+            camera.position.z = updateCamera.position.z;
+            camera.target.z = updateCamera.target.z;
+        }
 
         IVector2 moveChunk = GetPosChunk(camera.position);
         int chunkIdx = (moveChunk.x+4) * 8 + (moveChunk.y+4);
@@ -224,6 +352,24 @@ int main()
                 camera.position.y = rayCollision.point.y + playerHeight;
                 camera.target.y += 1000000 - rayCollision.distance + playerHeight;
             }
+        }
+
+        // Sun shader controls
+
+        if (IsKeyPressed(KEY_KP_8)) {
+            moveSun(0.01,0,&azimuthVal,&inclinationVal);
+        }
+
+        if (IsKeyPressed(KEY_KP_2)) {
+            moveSun(-0.01,0,&azimuthVal,&inclinationVal);
+        }
+
+        if (IsKeyPressed(KEY_KP_4)) {
+            moveSun(0,-0.01,&azimuthVal,&inclinationVal);
+        }
+        
+        if (IsKeyPressed(KEY_KP_6)) {
+            moveSun(0,0.01,&azimuthVal,&inclinationVal);
         }
 
         //----------------------------------------------------------------------------------
@@ -253,13 +399,17 @@ int main()
                 DrawCubeWires(cubePosition, 2.0f, 2.0f, 2.0f, MAROON);
                 DrawGrid(10, 1.0f);
 
+                rlDisableBackfaceCulling();
+                    DrawModel(skyModel, (Vector3){0.0, 0.0, 0.0}, 1, WHITE);
+                rlEnableBackfaceCulling();
+
             EndMode3D();
 
             char posText[40];
             sprintf(posText, "%f %f %f", camera.position.x, camera.position.y, camera.position.z);
             DrawText(posText, 20, 40, 20, BLACK);
 
-            // BeginShaderMode(shaderblur);
+            // BeginShaderMode(shaderFirst);
             //     DrawTextureRec(target.texture, (Rectangle){ 0, 0, (float)target.texture.width, (float)-target.texture.height }, (Vector2){ 0, 0 }, WHITE); // render texture with shader applied
             // EndShaderMode();
             
